@@ -9,8 +9,8 @@ const getLocation = (
     start: Location = { line: 0 },
     end: Location = { line: 0 }
 ): {
-    start_line?: number;
-    end_line?: number;
+    start_line: number;
+    end_line: number;
     start_column?: number;
     end_column?: number;
 } => ({
@@ -23,6 +23,47 @@ const getLocation = (
           }
         : {}),
 });
+
+const deduplicateAnnotations = (
+    annotations: Partial<Annotation>[]
+): Partial<Annotation>[] => {
+    const cmpAnnotations = (
+        a: Partial<Annotation>,
+        b: Partial<Annotation>
+    ): 1 | 0 | -1 => {
+        // [ [fieldName, defaultValue], ... ]
+        const fields = [
+            ['path', ''],
+            ['start_line', 1],
+            ['end_line', 1],
+            ['start_column', 1],
+            ['end_column', 1],
+            ['annotation_level', ''],
+            ['title', ''],
+            ['message', ''],
+        ] as const;
+
+        for (const [field, defaultValue] of fields) {
+            const aValue = a[field] ?? defaultValue;
+            const bValue = b[field] ?? defaultValue;
+
+            if (aValue < bValue) return -1;
+            if (aValue > bValue) return 1;
+        }
+
+        return 0;
+    };
+
+    return annotations
+        .sort(cmpAnnotations)
+        .filter((value, index, array) => {
+            // always keep the first element
+            if (index === 0) return true;
+
+            // skip elements that are equal to the previous
+            return cmpAnnotations(value, array[index - 1]) !== 0;
+        });
+};
 
 export const createCoverageAnnotations = (
     jsonReport: JsonReport
@@ -102,7 +143,7 @@ export const createCoverageAnnotations = (
         }
     );
 
-    return annotations.filter(
+    return deduplicateAnnotations(annotations).filter(
         (annotation): annotation is Annotation =>
             isValidNumber(annotation.start_line) &&
             isValidNumber(annotation.end_line)
